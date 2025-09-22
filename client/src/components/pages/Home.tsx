@@ -3,18 +3,24 @@ import api from "../../lib/axios/axios"
 import { API_ROUTES } from "../../lib/api"
 import { useRef, useState } from "react";
 import { JsonViewer } from "../ui/home/JsonViewer";
+import MessageBox from "../ui/home/MessageBox";
 
 export default function Home() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [history, setHistory] = useState<{
-    knowYourKolam: string;
-    searchKolam: string[];
-    predictKolam: string;
-  }[] | null>(null);
-  const [renderHistory, setRenderHistory] = useState<string[] | null>(null);
+  const [operationHistory, setOperationHistory] = useState<{
+    id: string;
+    timestamp: number;
+    type: 'analysis' | 'render';
+    data: {
+      knowYourKolam?: string;
+      searchKolam?: string[];
+      predictKolam?: string;
+      renderedImage?: string;
+    };
+  }[]>([]);
   const [jsonInput, setJsonInput] = useState<string>("");
 
 
@@ -76,7 +82,7 @@ export default function Home() {
     mutationFn: async (data: any) => {
       const res = await api.post(
         API_ROUTES.KOLAM.RENDER,
-        data, // send parsed object directly
+        data,
         {
           headers: {
             "Content-Type": "application/json",
@@ -86,7 +92,18 @@ export default function Home() {
       return res.data.file;
     },
     onSuccess: (data) => {
-      setRenderHistory(prev => ([...(prev || []), data]));
+      setJsonInput("");
+      setOperationHistory(prev => ([
+        ...prev,
+        {
+          id: Date.now().toString(),
+          timestamp: Date.now(),
+          type: 'render',
+          data: {
+            renderedImage: data
+          }
+        }
+      ]));
     }
   });
 
@@ -100,13 +117,18 @@ export default function Home() {
         predictKolamMutation.mutateAsync(file)
       ]);
 
-      // update history only after all mutations are complete
-      setHistory(prev => ([
-        ...(prev || []),
+      // update unified history
+      setOperationHistory(prev => ([
+        ...prev,
         {
-          knowYourKolam: JSON.stringify(knowResult),
-          searchKolam: searchResult,
-          predictKolam: predictResult,
+          id: Date.now().toString(),
+          timestamp: Date.now(),
+          type: 'analysis',
+          data: {
+            knowYourKolam: JSON.stringify(knowResult),
+            searchKolam: searchResult,
+            predictKolam: predictResult,
+          }
         }
       ]));
 
@@ -132,30 +154,10 @@ export default function Home() {
   return (
     <div className="grid grid-cols-5 h-full w-full">
       {/* main content */}
-      <div className="col-span-4 p-8 w-full h-full bg-gray-50 h-screen overflow-y-auto">
+      <div className="col-span-4 p-8 w-full bg-gray-50 h-screen overflow-y-auto">
         <div className="flex flex-col gap-8 h-full">
-          {/* {predictKolamMutation.data && searchKolamMutation.data && (
-            <MessageBox width="fit-content" text={`Hmm, I think it's from the ${predictKolamMutation.data}, it's well known as ${predictKolamMutation.data == "Maharastra" ? "Rangoli" : "Kolam"} in ${predictKolamMutation.data}.\nHere are some similar kolams I found in our database:`}>
-              <div className="grid grid-cols-3 gap-4">
-                {searchKolamMutation.data.map((imgstr: string) => (
-                  <div key={imgstr} className="h-[200px] overflow-hidden aspect-square rounded-lg border border-gray-200">
-                    <img
-                      src={imgstr.startsWith('http') ? imgstr : `${import.meta.env.VITE_API_URL}/${imgstr}`}
-                      alt="Similar kolam"
-                      className="object-cover w-full h-full"
-                    />
-                  </div>
-                ))}
-              </div>
-            </MessageBox>
-          )}
-          {knowYourKolamMutation.data && (
-            <MessageBox width="fit-content" text={`Here's a Mathematical representation of your kolam (in JSON format) \nYou can copy and generate using our kolam renderer API`}>
-              <JsonViewer text={JSON.stringify(knowYourKolamMutation.data)} />
-            </MessageBox>
-          )} */}
           {
-            (!history || history.length < 1) && (!renderHistory || renderHistory.length < 1) && (
+            (!operationHistory || operationHistory.length < 1) && (
               <div className="w-full h-full bg-white rounded-2xl p-4 flex items-center justify-center flex-col">
                 <img src="/logo.webp" alt="" />
                 <p className="text-gray-500">Upload a kolam image to get started</p>
@@ -163,40 +165,45 @@ export default function Home() {
             )
           }
           {
-            history && history.length > 0 && history.map((item, _index) => (
-              <>
-                <MessageBox width="fit-content" text={`Hmm, I think it's from the ${item.predictKolam}, it's well known as ${item.predictKolam == "Maharastra" ? "Rangoli" : "Kolam"} in ${item.predictKolam}.\nHere are some similar kolams I found in our database:`}>
-                  <div className="grid grid-cols-3 gap-4">
-                    {item.searchKolam.map((imgstr: string) => (
-                      <div key={imgstr} className="h-[200px] overflow-hidden aspect-square rounded-lg border border-gray-200">
-                        <img
-                          src={imgstr.startsWith('http') ? imgstr : `${import.meta.env.VITE_API_URL}/${imgstr}`}
-                          alt="Similar kolam"
-                          className="object-cover w-full h-full"
-                        />
+            operationHistory && operationHistory.length > 0 && operationHistory.map((operation) => {
+              if (operation.type === 'analysis') {
+                return (
+                  <div key={operation.id} className="flex flex-col gap-6">
+                    <MessageBox width="fit-content" text={`Hmm, I think it's from the ${operation.data.predictKolam}, it's well known as ${operation.data.predictKolam == "Maharastra" ? "Rangoli" : "Kolam"} in ${operation.data.predictKolam}.\nHere are some similar kolams I found in our database:`}>
+                      <div className="grid grid-cols-3 gap-4">
+                        {operation.data.searchKolam?.map((imgstr: string) => (
+                          <div key={imgstr} className="h-[200px] overflow-hidden aspect-square rounded-lg border border-gray-200">
+                            <img
+                              src={imgstr.startsWith('http') ? imgstr : `${import.meta.env.VITE_API_URL}/${imgstr}`}
+                              alt="Similar kolam"
+                              className="object-cover w-full h-full"
+                            />
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    </MessageBox>
+                    <MessageBox width="fit-content" text={`Here's a Mathematical representation of your kolam (in JSON format) \nYou can copy and generate using our kolam renderer API`}>
+                      <JsonViewer text={operation.data.knowYourKolam || ""} />
+                    </MessageBox>
                   </div>
-                </MessageBox>
-                <MessageBox width="fit-content" text={`Here's a Mathematical representation of your kolam (in JSON format) \nYou can copy and generate using our kolam renderer API`}>
-                  <JsonViewer text={item.knowYourKolam} />
-                </MessageBox>
-              </>
-            ))
+                );
+              } else if (operation.type === 'render') {
+                return (
+                  <MessageBox key={operation.id} width="fit-content" text={`Here's the kolam rendered from your JSON input`}>
+                    <div className="h-[300px] overflow-hidden aspect-square rounded-lg border border-gray-200">
+                      <object
+                        type="image/svg+xml"
+                        data={operation.data.renderedImage?.startsWith("http") ? operation.data.renderedImage : `${import.meta.env.VITE_API_URL}/${operation.data.renderedImage}`}
+                        className="w-full h-full"
+                      />
+                    </div>
+                  </MessageBox>
+                );
+              }
+              return null;
+            })
           }
-          {
-            renderHistory && renderHistory.length > 0 && renderHistory.map((imgstr: string, _index) => (
-              <MessageBox key={imgstr} width="fit-content" text={`Here's the kolam rendered from your JSON input`}>
-                <div className="h-[300px] overflow-hidden aspect-square rounded-lg border border-gray-200">
-                  <object
-                    type="image/svg+xml"
-                    data={imgstr.startsWith("http") ? imgstr : `${import.meta.env.VITE_API_URL}/${imgstr}`}
-                    className="w-full h-full"
-                  />
-                </div>
-              </MessageBox>
-            ))
-          }
+          <div className="pt-8"></div>
         </div>
       </div>
       {/* sidebar */}
@@ -241,6 +248,7 @@ export default function Home() {
           placeholder="Add json to render kolam.."
           rows={10}
           onChange={(e) => setJsonInput(e.target.value)}
+          value={jsonInput}
         ></textarea>
 
         {jsonInput.trim().length > 0 ? (
@@ -259,22 +267,6 @@ export default function Home() {
             Render Kolam
           </button>
         ) : null}
-      </div>
-    </div>
-  )
-}
-
-function MessageBox({ width, children, text }: { width: string, children?: React.ReactNode, text?: string }) {
-  return (
-    <div className={`bg-white p-4 rounded-lg shadow flex gap-2 justify-start items-start`} style={{ maxWidth: width }}>
-      <div className="min-w-10 min-h-10 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
-        <img src="/logo.webp" alt="logo" className="object-cover w-10 h-10" />
-      </div>
-      <div className="mt-1 flex flex-col gap-6 mr-4">
-        {text && <div className="text-gray-800 whitespace-pre-wrap">{text}</div>}
-        {
-          children ? children : <p className="text-gray-800">Hello, how can I help you?</p>
-        }
       </div>
     </div>
   )

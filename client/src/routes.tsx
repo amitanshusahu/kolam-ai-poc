@@ -3,6 +3,7 @@ import Home from "./components/pages/Home";
 import { Brain, Compass, HomeIcon, ImageDown, MessageCircle, Navigation } from "lucide-react";
 import AppLayout from "./components/ui/Layout/AppLayout";
 import Community from "./components/pages/Community";
+import Landing from "./components/pages/Landing";
 
 type Route = {
   path: string;
@@ -21,7 +22,7 @@ export const routes: Route = [
   {
     path: "/",
     element: (
-      <div>Landing page <a href="/home">go home</a></div>
+      <Landing />
     )
   },
   {
@@ -68,7 +69,7 @@ export const routes: Route = [
     name: "My Kolams",
     icon: <ImageDown size={16} />,
   },
-    {
+  {
     path: "/support",
     element: (
       <AppLayout>
